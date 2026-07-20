@@ -1,6 +1,8 @@
 #pragma once
 
 #include "disk_manager.h"
+#include "wal_record.h"
+
 #include <cstddef>
 #include <list>
 #include <unordered_map>
@@ -25,7 +27,7 @@ namespace Kintsugi::BufferPool
      class BufferPoolManager
      {
           public:
-               BufferPoolManager(std::size_t pool_size, Storage::DiskManager* disk_manager);
+               BufferPoolManager(std::size_t pool_size, Storage::DiskManager* disk_manager, WAL::WALManager* wal_manager);
 
                //define functions
                Frame* fetch_page(int page_id);
@@ -39,6 +41,7 @@ namespace Kintsugi::BufferPool
 
           private:
                Storage::DiskManager* _disk_manager = nullptr;
+               WAL::WALManager*      _wal_manager  = nullptr;
 
                std::list<int> lru_list;
                std::unordered_map<int, std::list<int>::iterator> lru_map;

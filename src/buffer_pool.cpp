@@ -10,8 +10,8 @@
 
 namespace Kintsugi::BufferPool 
 {
-     BufferPoolManager::BufferPoolManager(const std::size_t pool_size, Storage::DiskManager* disk_manager)
-          : _disk_manager(disk_manager) {
+     BufferPoolManager::BufferPoolManager(const std::size_t pool_size, Storage::DiskManager* disk_manager, WAL::WALManager* wal_manager)
+          : _disk_manager(disk_manager), _wal_manager(wal_manager) {
                frames.resize(pool_size);
           }
 
@@ -62,6 +62,7 @@ namespace Kintsugi::BufferPool
           {
                if(target_frame.is_dirty)
                {
+                    _wal_manager->write_log(target_frame.page_id, target_frame.data);
                     _disk_manager->write_page(target_frame.page_id, target_frame.data);
                }
 
@@ -123,6 +124,7 @@ namespace Kintsugi::BufferPool
           {
                if(target.is_dirty)
                {
+                    _wal_manager->write_log(target.page_id, target.data);
                     _disk_manager->write_page(target.page_id, target.data);
                }
 
@@ -169,6 +171,7 @@ namespace Kintsugi::BufferPool
           Frame& frame = frames[it->second];
           if(frame.is_dirty)
           {
+               _wal_manager->write_log(page_id, frame.data);
                _disk_manager->write_page(page_id, frame.data);
                frame.is_dirty = false;
           }
@@ -180,6 +183,7 @@ namespace Kintsugi::BufferPool
           {
                if(frame.is_dirty)
                {
+                    _wal_manager->write_log(frame.page_id, frame.data);
                     _disk_manager->write_page(frame.page_id, frame.data);
                     frame.is_dirty = false;
                }
