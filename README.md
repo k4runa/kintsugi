@@ -16,8 +16,9 @@ on every access.
 
 **B+tree index** — mostly done. Search and insert work, including 
 splitting a node when it fills up (509 keys max) and growing the 
-tree. Delete also runs, but the underflow logic — merging or 
-borrowing keys from a sibling when a node gets too empty — is the 
+tree. Delete also runs but the underflow logic — merging or 
+borrowing keys from a sibling when a node gets too empty 
+(but i didn't commited it, still on development.), — is the 
 part I understand the least. It passes my tests, but I want to 
 rewrite it myself before I trust it.
 
