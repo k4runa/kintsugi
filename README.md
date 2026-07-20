@@ -6,7 +6,7 @@ under the hood, so I'm building the storage layer of one — not a
 full database, just the part that gets data on and off disk 
 correctly.
 
-## Status, layer by layer
+## Status
 
 **Disk layer** — done. Fixed 4KB pages, read/write by page ID.
 
@@ -46,4 +46,4 @@ make
 
 ## License
 
-MIT
+[MIT](LICENSE)
