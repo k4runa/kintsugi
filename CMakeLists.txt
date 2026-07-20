@@ -9,6 +9,8 @@ add_executable(kintsugi
     src/btree_node.cpp
     src/buffer_pool.cpp
     src/disk_manager.cpp
+    src/wal_manager.cpp
+
     src/main.cpp
 )
 
