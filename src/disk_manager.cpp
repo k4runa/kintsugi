@@ -34,7 +34,7 @@ namespace Kintsugi::Storage
           }
      }
 
-     void DiskManager::write_page(int page_id, char* page_data)
+     void DiskManager::read_page(int page_id, char* page_data)
      {
           _db_io.seekg(static_cast<std::streamoff>(page_id) * PAGE_SIZE);
           _db_io.read(page_data, PAGE_SIZE);
@@ -45,7 +45,7 @@ namespace Kintsugi::Storage
           }
      }
 
-     void DiskManager::read_page(int page_id, char* page_data)
+     void DiskManager::write_page(int page_id, const char* page_data)
      {
           _db_io.seekg(static_cast<std::streamoff>(page_id) * PAGE_SIZE);
           _db_io.write(page_data, PAGE_SIZE);

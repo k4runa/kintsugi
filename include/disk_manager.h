@@ -13,13 +13,14 @@ namespace Kintsugi::Storage
      {
           public:
                static constexpr std::size_t PAGE_SIZE = 4096;
+               DiskManager(const std::string& db_file);
                ~DiskManager() = default;
 
                // functions
-               void ReadPage(int page_id, char* page_data);
-               void WritePage(int page_id, const char* page_data);
+               void read_page(int page_id, char* page_data);
+               void write_page(int page_id, const char* page_data);
 
-               int AllocatePage();
+               int allocate_page();
 
           private:
                std::fstream _db_io;
