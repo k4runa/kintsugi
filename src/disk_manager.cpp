@@ -15,8 +15,8 @@ namespace Kintsugi::Storage
           //check if file couldn't open, or not exists
           if(!_db_io.is_open())
           {
-               std::cerr << "WARNING: couldn't found -> " << _file_name
-                    << "\nCreating..." << std::endl;
+               std::cerr << "INFO: couldn't found -> " << _file_name
+                    << "\nINFO: Creating new database file..." << std::endl;
 
                _db_io.clear();
                _db_io.open(_file_name, std::ios::out); // just create the file
@@ -30,7 +30,7 @@ namespace Kintsugi::Storage
                     throw std::runtime_error("Could not create / open file: " + _file_name);
                }
 
-               std::cout << "Database created successfully: " << _file_name << std::endl;
+               std::cout << "INFO: Database created successfully: " << _file_name << std::endl;
           }
      }
 
