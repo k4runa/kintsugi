@@ -2,6 +2,9 @@
 
 #include "disk_manager.h"
 #include <cstddef>
+#include <list>
+#include <unordered_map>
+#include <vector>
 
 namespace Kintsugi::BufferPool
 {
@@ -32,7 +35,14 @@ namespace Kintsugi::BufferPool
                void flush_page(int page_id);
                void flush_all_pages();
 
+               std::size_t find_free_or_evictable_frame();
+
           private:
                Storage::DiskManager* _disk_manager = nullptr;
+
+               std::list<int> lru_list;
+               std::unordered_map<int, std::list<int>::iterator> lru_map;
+               std::vector<Frame> frames;
+               std::unordered_map<int,int> page_table;
      };
 }
