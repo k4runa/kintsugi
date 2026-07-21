@@ -41,14 +41,16 @@ namespace Kintsugi::Tree
                bool insert(int key, int value);
                bool search(int key, int* out_value);
 
+          private:
+               Kintsugi::BufferPool::BufferPoolManager* _bpm = nullptr;
+               int _root_page_id;
+
+
+               // private functions
                void insert_into_leaf(BTreeNode* node, int key, int value);
                void insert_into_internal(BTreeNode*, int middle_key, int right_page_id);
 
                int split_leaf(int left_page_id, BTreeNode* left, int* out_middle_key);
                int split_internal(BTreeNode* left, int* out_middle_key);
-
-          private:
-               Kintsugi::BufferPool::BufferPoolManager* _bpm = nullptr;
-               int _root_page_id;
      };
 }
