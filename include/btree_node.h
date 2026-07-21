@@ -1,7 +1,10 @@
 #pragma once
 
 // includes
+#include <cstdint>
 #include <string>
+#include <utility>
+#include <vector>
 #include "buffer_pool.h"
 #include "disk_manager.h"
 
@@ -40,15 +43,19 @@ namespace Kintsugi::Tree
                // define functions
                bool insert(int key, int value);
                bool search(int key, int* out_value);
+               bool delete_k(int key);
 
+               std::vector<std::pair<int, int>> range_query(std::uint32_t min, std::uint32_t max) const;
+
+          private:
+               Kintsugi::BufferPool::BufferPoolManager* _bpm = nullptr;
+               int _root_page_id;
+
+               //private functions
                void insert_into_leaf(BTreeNode* node, int key, int value);
                void insert_into_internal(BTreeNode*, int middle_key, int right_page_id);
 
                int split_leaf(int left_page_id, BTreeNode* left, int* out_middle_key);
                int split_internal(BTreeNode* left, int* out_middle_key);
-
-          private:
-               Kintsugi::BufferPool::BufferPoolManager* _bpm = nullptr;
-               int _root_page_id;
      };
 }
