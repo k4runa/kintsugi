@@ -16,7 +16,7 @@ namespace Kintsugi::Storage
      {
           // open the file, if fail or not exists, create a new one
 #ifdef _WIN32
-          HANDLE hFile = CreateFile(
+          _hFile = CreateFile(
                _file_name.c_str(),
                GENERIC_READ | GENERIC_WRITE,
                FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -24,12 +24,12 @@ namespace Kintsugi::Storage
                OPEN_ALWAYS,
                FILE_ATTRIBUTE_NORMAL,
                NULL
-          );
+          );  
 
-          if(hFile == INVALID_HANDLE_VALUE)
+          if(_hFile == INVALID_HANDLE_VALUE)
           {
                throw std::runtime_error("Could not open file: " + _file_name);
-          }
+          } 
 
           std::cout << "INFO: Database created successfully: " << _file_name << std::endl;
 
@@ -96,7 +96,7 @@ namespace Kintsugi::Storage
 
           FlushFileBuffers(_hFile);
 #else
-          _db_io.seekg(static_cast<std::streamoff>(page_id) * PAGE_SIZE);
+          _db_io.seekp(static_cast<std::streamoff>(page_id) * PAGE_SIZE);
           _db_io.write(page_data, PAGE_SIZE);
 
           if(_db_io.fail())
