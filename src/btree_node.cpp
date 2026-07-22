@@ -1,6 +1,8 @@
 #include "../include/btree_node.h"
 #include "../include/buffer_pool.h"
+#include <algorithm>
 #include <cstdint>
+#include <ios>
 #include <utility>
 #include <vector>
 
@@ -148,7 +150,7 @@ namespace Kintsugi::Tree
           int right_page_id;
           
           BufferPool::Frame* right_frame = _bpm->new_page(&right_page_id);
-          BTreeNode*         right       = reinterpret_cast<BTreeNode*>(right_frame->data);
+          BTreeNode* right = reinterpret_cast<BTreeNode*>(right_frame->data);
 
           right->is_leaf = false;
 
@@ -182,7 +184,7 @@ namespace Kintsugi::Tree
           int current_page_id = _root_page_id;
 
           BufferPool::Frame* frame = _bpm->fetch_page(current_page_id);
-          BTreeNode*         node  = reinterpret_cast<BTreeNode*>(frame->data);
+          BTreeNode* node  = reinterpret_cast<BTreeNode*>(frame->data);
 
           while(!node->is_leaf) 
           {
@@ -203,7 +205,7 @@ namespace Kintsugi::Tree
                current_page_id = next_page_id;
                
                frame = _bpm->fetch_page(current_page_id);
-               node  = reinterpret_cast<BTreeNode*>(frame->data);
+               node = reinterpret_cast<BTreeNode*>(frame->data);
           }
 
           insert_into_leaf(node, key, value);
@@ -266,7 +268,7 @@ namespace Kintsugi::Tree
 
           int current_page_id = _root_page_id;
           BufferPool::Frame* frame = _bpm->fetch_page(current_page_id);
-          BTreeNode*         node  = reinterpret_cast<BTreeNode*>(frame->data);
+          BTreeNode* node  = reinterpret_cast<BTreeNode*>(frame->data);
 
           while(!node->is_leaf)
           {
@@ -308,8 +310,8 @@ namespace Kintsugi::Tree
                _bpm->unpin_page(current_page_id, false);
                if(next == -1) break;
                current_page_id = next;
-               frame           = _bpm->fetch_page(current_page_id);
-               node            = reinterpret_cast<BTreeNode*>(frame->data);
+               frame = _bpm->fetch_page(current_page_id);
+               node = reinterpret_cast<BTreeNode*>(frame->data);
           }
 
           return out_vector;
@@ -317,9 +319,11 @@ namespace Kintsugi::Tree
 
      bool BTreeIndex::delete_k(int key)
      {
+          std::vector<std::pair<int,int>> path;
+          
           int current_page_id = _root_page_id;
           BufferPool::Frame* frame = _bpm->fetch_page(current_page_id);
-          BTreeNode*         node  = reinterpret_cast<BTreeNode*>(frame->data); 
+          BTreeNode* node  = reinterpret_cast<BTreeNode*>(frame->data); 
 
           while(!node->is_leaf)
           {
@@ -333,12 +337,13 @@ namespace Kintsugi::Tree
                     }
                }
 
+               path.push_back({current_page_id, child_index});
                int next_page_id = node->children[child_index];
                _bpm->unpin_page(current_page_id, false);
 
                current_page_id = next_page_id;
-               frame           = _bpm->fetch_page(current_page_id);
-               node            = reinterpret_cast<BTreeNode*>(frame->data);
+               frame = _bpm->fetch_page(current_page_id);
+               node = reinterpret_cast<BTreeNode*>(frame->data);
           }
 
           std::uint32_t delete_pos = node->key_count;
@@ -351,8 +356,12 @@ namespace Kintsugi::Tree
                }
           }
 
-          // if not found
-          if(delete_pos == node->key_count) return false;
+          // not found
+          if(delete_pos == node->key_count)
+          {
+               _bpm->unpin_page(current_page_id, false);
+               return false;
+          }
           
           for(std::uint32_t i = delete_pos; i < node->key_count - 1; ++i)
           {
@@ -360,8 +369,100 @@ namespace Kintsugi::Tree
                node->values[i] = node->values[i + 1];
           }
 
-          node->key_count--;
+          node->key_count--; 
+          if(node->key_count >= BTreeNode::MIN_KEYS)
+          {
+               _bpm->unpin_page(current_page_id, true);
+               return true;
+          }
+
+          while(!path.empty())
+          {
+               int parent_id = path.back().first;
+               int child_index = path.back().second;
+
+               BufferPool::Frame* parent_frame = _bpm->fetch_page(parent_id);
+               BTreeNode* parent = reinterpret_cast<BTreeNode*>(parent_frame->data);
+
+               int left_sibling_idx = (child_index > 0) ? child_index - 1 : -1;
+               int left_page_id = (left_sibling_idx != -1) ? parent->children[left_sibling_idx] : -1;
+
+               int right_sibling_idx = (child_index < parent->key_count) ? child_index + 1 : -1;
+               int right_page_id = (right_sibling_idx != -1 ) ? parent->children[right_sibling_idx] : -1;
+
+               BufferPool::Frame* left_sibling_frame = left_page_id != -1 ? _bpm->fetch_page(left_page_id) : nullptr;
+               BTreeNode* left_sibling = left_sibling_frame != nullptr ? reinterpret_cast<BTreeNode*>(left_sibling_frame->data) : nullptr;
+
+               if(left_sibling != nullptr && left_sibling->key_count > BTreeNode::MIN_KEYS)
+               {
+                    int borrowed_key = left_sibling->keys[left_sibling->key_count - 1];
+                    int borrowed_val = left_sibling->values[left_sibling->key_count - 1];
+
+                    for(std::uint32_t i = node->key_count; i > 0; --i)
+                    {
+                         node->keys[i] = node->keys[i - 1];
+                         node->children[i] = node->children[i - 1];
+                    }
+
+                    node->keys[0] = borrowed_key;
+                    node->values[0] = borrowed_val;
+
+                    left_sibling->key_count--;
+                    node->key_count++;
+
+                    parent->keys[child_index - 1] = node->keys[0];
+
+                    _bpm->unpin_page(current_page_id, true);
+                    _bpm->unpin_page(left_page_id, true);
+                    _bpm->unpin_page(parent_id, true);
+
+                    return true;
+                    
+               }
+               else 
+               {
+                    //first unpin the left, because we wont gonna use it.
+                    if(left_page_id != -1) _bpm->unpin_page(left_page_id, false);
+                    
+                    BufferPool::Frame* right_sibling_frame = right_page_id != -1 ? _bpm->fetch_page(right_page_id) : nullptr;
+                    BTreeNode* right_sibling = right_sibling_frame != nullptr ? reinterpret_cast<BTreeNode*>(right_sibling_frame->data) : nullptr;
+
+                    if(right_sibling != nullptr && right_sibling->key_count > BTreeNode::MIN_KEYS)
+                    {
+                         int borrowed_key = right_sibling->keys[0];
+                         int borrowed_val = right_sibling->values[0];
+
+                         for(std::uint32_t i = 0; i < right_sibling->key_count - 1; ++i)
+                         {
+                              right_sibling->keys[i] = right_sibling->keys[i + 1];
+                              right_sibling->values[i] = right_sibling->values[i + 1];
+                         }
+
+                         node->keys[node->key_count] = borrowed_key;
+                         node->values[node->key_count] = borrowed_val;
+
+                         right_sibling->key_count--;
+                         node->key_count++;
+
+                         parent->keys[child_index] = right_sibling->keys[0];
+
+                         _bpm->unpin_page(current_page_id, true);
+                         _bpm->unpin_page(right_page_id, true);
+                         _bpm->unpin_page(parent_id, true); 
+
+                         return true;
+                    }
+               }
+               
+               if(right_page_id != -1) _bpm->unpin_page(right_page_id, false);
+               _bpm->unpin_page(current_page_id, true);
+               current_page_id = parent_id;
+               node = parent;
+               path.pop_back();
+          }
+
           _bpm->unpin_page(current_page_id, true);
-          return true;
+          
+          return false; // ill add merge later
      }
 }
