@@ -1,8 +1,6 @@
 #include "../include/btree_node.h"
 #include "../include/buffer_pool.h"
-#include <algorithm>
 #include <cstdint>
-#include <ios>
 #include <utility>
 #include <vector>
 
@@ -319,11 +317,11 @@ namespace Kintsugi::Tree
 
      bool BTreeIndex::delete_k(int key)
      {
-          std::vector<std::pair<int,int>> path;
-          
+          std::vector<std::pair<int, int>> path;
+
           int current_page_id = _root_page_id;
           BufferPool::Frame* frame = _bpm->fetch_page(current_page_id);
-          BTreeNode* node  = reinterpret_cast<BTreeNode*>(frame->data); 
+          BTreeNode* node = reinterpret_cast<BTreeNode*>(frame->data);
 
           while(!node->is_leaf)
           {
@@ -338,6 +336,7 @@ namespace Kintsugi::Tree
                }
 
                path.push_back({current_page_id, child_index});
+
                int next_page_id = node->children[child_index];
                _bpm->unpin_page(current_page_id, false);
 
@@ -356,75 +355,104 @@ namespace Kintsugi::Tree
                }
           }
 
-          // not found
+          //not found
           if(delete_pos == node->key_count)
           {
                _bpm->unpin_page(current_page_id, false);
                return false;
           }
-          
+
           for(std::uint32_t i = delete_pos; i < node->key_count - 1; ++i)
           {
                node->keys[i] = node->keys[i + 1];
                node->values[i] = node->values[i + 1];
           }
 
-          node->key_count--; 
+          node->key_count--;
           if(node->key_count >= BTreeNode::MIN_KEYS)
           {
                _bpm->unpin_page(current_page_id, true);
                return true;
           }
+
           while(!path.empty())
           {
-               int parent_id = path.back().first;
+               int parent_page_id = path.back().first;
                int child_index = path.back().second;
 
-               BufferPool::Frame* parent_frame = _bpm->fetch_page(parent_id);
+               BufferPool::Frame* parent_frame = _bpm->fetch_page(parent_page_id);
                BTreeNode* parent = reinterpret_cast<BTreeNode*>(parent_frame->data);
 
-               int left_sibling_idx = (child_index > 0) ? child_index - 1 : -1;
+               int left_sibling_idx = (child_index > 0) ? child_index - 1: -1;
                int left_page_id = (left_sibling_idx != -1) ? parent->children[left_sibling_idx] : -1;
 
-               int right_sibling_idx = (child_index < parent->key_count) ? child_index + 1 : -1;
-               int right_page_id = (right_sibling_idx != -1 ) ? parent->children[right_sibling_idx] : -1;
+               int right_sibling_idx = (child_index < (int)parent->key_count) ? child_index + 1 : -1;
+               int right_page_id = (right_sibling_idx != -1) ? parent->children[right_sibling_idx] : -1;
 
                BufferPool::Frame* left_sibling_frame = left_page_id != -1 ? _bpm->fetch_page(left_page_id) : nullptr;
                BufferPool::Frame* right_sibling_frame = right_page_id != -1 ? _bpm->fetch_page(right_page_id) : nullptr;
 
                BTreeNode* left_sibling = left_sibling_frame != nullptr ? reinterpret_cast<BTreeNode*>(left_sibling_frame->data) : nullptr;
                BTreeNode* right_sibling = right_sibling_frame != nullptr ? reinterpret_cast<BTreeNode*>(right_sibling_frame->data) : nullptr;
+          
+               bool is_leaf = node->is_leaf;
 
                if(left_sibling != nullptr && left_sibling->key_count > BTreeNode::MIN_KEYS)
                {
-                    int borrowed_key = left_sibling->keys[left_sibling->key_count - 1];
-                    int borrowed_val = left_sibling->values[left_sibling->key_count - 1];
-
-                    for(std::uint32_t i = node->key_count; i > 0; --i)
+                    if(is_leaf)
                     {
-                         node->keys[i] = node->keys[i - 1];
-                         node->values[i] = node->values[i - 1];
+                         int borrowed_key = left_sibling->keys[left_sibling->key_count - 1];
+                         int borrowed_val = left_sibling->values[left_sibling->key_count - 1];
+
+                         for(std::uint32_t i = node->key_count; i > 0; --i)
+                         {
+                              node->keys[i] = node->keys[i - 1];
+                              node->values[i] = node->values[i - 1];
+                         }
+
+                         node->keys[0] = borrowed_key;
+                         node->values[0] = borrowed_val;
+
+                         left_sibling->key_count--;
+                         node->key_count++;
+
+                         parent->keys[child_index - 1] = node->keys[0];
                     }
+                    else 
+                    {
+                         //shift node's keys / children right by one
+                         for(std::uint32_t i = node->key_count; i > 0; --i)
+                         {
+                              node->keys[i] = node->keys[i - 1];
+                         }
+                         for(std::uint32_t i = node->key_count + 1; i > 0; --i)
+                         {
+                              node->children[i] = node->children[i - 1];
+                         }
 
-                    node->keys[0] = borrowed_key;
-                    node->values[0] = borrowed_val;
+                         node->keys[0] = parent->keys[child_index - 1];
+                         node->children[0] = left_sibling->children[left_sibling->key_count];
 
-                    left_sibling->key_count--;
-                    node->key_count++;
+                         //left sibling's last key moves up to parent
+                         parent->keys[child_index - 1] = left_sibling->keys[left_sibling->key_count - 1];
 
-                    parent->keys[child_index - 1] = node->keys[0];
+                         left_sibling->key_count--;
+                         node->key_count++;
+                    }
 
                     _bpm->unpin_page(current_page_id, true);
                     _bpm->unpin_page(left_page_id, true);
+
                     if(right_page_id != -1) _bpm->unpin_page(right_page_id, false);
-                    _bpm->unpin_page(parent_id, true);
+
+                    _bpm->unpin_page(parent_page_id, true);
 
                     return true;
-                    
                }
-               else 
+
+               if(right_sibling != nullptr && right_sibling->key_count > BTreeNode::MIN_KEYS)
                {
-                    if(right_sibling != nullptr && right_sibling->key_count > BTreeNode::MIN_KEYS)
+                    if(is_leaf)
                     {
                          int borrowed_key = right_sibling->keys[0];
                          int borrowed_val = right_sibling->values[0];
@@ -440,36 +468,73 @@ namespace Kintsugi::Tree
 
                          right_sibling->key_count--;
                          node->key_count++;
+                         parent->keys[child_index] = right_sibling->keys[0];
+                    }
+                    else 
+                    {
+                         node->keys[node->key_count] = parent->keys[child_index];
+                         node->children[node->key_count + 1] = right_sibling->children[0];
 
                          parent->keys[child_index] = right_sibling->keys[0];
 
-                         _bpm->unpin_page(current_page_id, true);
-                         _bpm->unpin_page(right_page_id, true);
-                         if(left_page_id != -1) _bpm->unpin_page(left_page_id, false);
-                         _bpm->unpin_page(parent_id, true); 
+                         for(std::uint32_t i = 0; i < right_sibling->key_count - 1; ++i)
+                         {
+                              right_sibling->keys[i] = right_sibling->keys[i + 1];
+                         }
+                         for(std::uint32_t i = 0; i < right_sibling->key_count; ++i)
+                         {
+                              right_sibling->children[i] = right_sibling->children[i + 1];
+                         }
 
-                         return true;
+                         right_sibling->key_count--;
+                         node->key_count++;
                     }
+
+                    _bpm->unpin_page(current_page_id, true);
+                    _bpm->unpin_page(right_page_id, true);
+
+                    if(left_page_id != -1) _bpm->unpin_page(left_page_id, false);
+
+                    _bpm->unpin_page(parent_page_id, true);
+                    return true;
                }
 
-               // borrow failed, try merge
-               if(left_page_id != -1 && left_sibling != nullptr) // try left first 
+               //merge with left 
+               if(left_page_id != -1 && left_sibling != nullptr)
                {
-                    for(std::uint32_t i = 0; i < node->key_count; ++i)
+                    if(is_leaf)
                     {
-                         left_sibling->keys[left_sibling->key_count + i] = node->keys[i];
-                         left_sibling->values[left_sibling->key_count + i] = node->values[i];
-                    }
+                         for(std::uint32_t i = 0; i < node->key_count; ++i)
+                         {
+                              left_sibling->keys[left_sibling->key_count + i] = node->keys[i];
+                              left_sibling->values[left_sibling->key_count + i] = node->values[i];
+                         }
 
-                    left_sibling->key_count += node->key_count;
-                    left_sibling->next_leaf_page_id = node->next_leaf_page_id;
+                         left_sibling->key_count += node->key_count;
+                         left_sibling->next_leaf_page_id = node->next_leaf_page_id;
+                    }
+                    else 
+                    {
+                         left_sibling->keys[left_sibling->key_count] = parent->keys[child_index - 1];
+                         std::uint32_t offset = left_sibling->key_count + 1;
+
+                         for(std::uint32_t i = 0; i < node->key_count; ++i)
+                         {
+                              left_sibling->keys[offset + i] = node->keys[i];
+                         }
+                         for(std::uint32_t i = 0; i < node->key_count + 1; ++i)
+                         {
+                              left_sibling->children[offset + i] = node->children[i];
+                         }
+
+                         left_sibling->key_count += node->key_count + 1;
+                    }
 
                     for(std::uint32_t i = child_index - 1; i < parent->key_count - 1; ++i)
                     {
                          parent->keys[i] = parent->keys[i + 1];
                          parent->children[i + 1] = parent->children[i + 2];
                     }
-
                     parent->key_count--;
 
                     _bpm->unpin_page(current_page_id, true);
@@ -477,26 +542,28 @@ namespace Kintsugi::Tree
 
                     if(right_page_id != -1) _bpm->unpin_page(right_page_id, false);
 
-                    if(parent_id == _root_page_id && parent->key_count == 0)
+                    if(parent_page_id == _root_page_id && parent->key_count == 0)
                     {
                          _root_page_id = left_page_id;
-                         _bpm->unpin_page(parent_id, true);
+                         _bpm->unpin_page(parent_page_id, true);
                          return true;
                     }
-
                     if(parent->key_count >= BTreeNode::MIN_KEYS)
                     {
-                         _bpm->unpin_page(parent_id, true);
+                         _bpm->unpin_page(parent_page_id, true);
                          return true;
                     }
 
-                    current_page_id = parent_id;
+                    current_page_id = parent_page_id;
                     node = parent;
                     path.pop_back();
+                    continue;
                }
-               else //if left fail, try with right
+
+               //merge with right
+               if(right_page_id != -1 && right_sibling != nullptr)
                {
-                    if(right_page_id != -1 && right_sibling != nullptr)
+                    if(is_leaf)
                     {
                          for(std::uint32_t i = 0; i < right_sibling->key_count; ++i)
                          {
@@ -506,41 +573,60 @@ namespace Kintsugi::Tree
 
                          node->key_count += right_sibling->key_count;
                          node->next_leaf_page_id = right_sibling->next_leaf_page_id;
-
-                         for(std::uint32_t i = child_index; i < parent->key_count - 1; ++i)
-                         {
-                              parent->keys[i] = parent->keys[i + 1];
-                              parent->children[i + 1] = parent->children[i + 2]; 
-                         }
-
-                         parent->key_count--;
-
-                         _bpm->unpin_page(current_page_id, true);
-                         _bpm->unpin_page(right_page_id, true);
-                         if(left_page_id != -1) _bpm->unpin_page(left_page_id, false);
-
-                         if(parent_id == _root_page_id && parent->key_count == 0)
-                         {
-                              _root_page_id = right_page_id;
-                              _bpm->unpin_page(parent_id, true);
-                              return true;
-                         }
-
-                         if(parent->key_count >= BTreeNode::MIN_KEYS)
-                         {
-                              _bpm->unpin_page(parent_id, true);
-                              return true;
-                         }
-
-                         current_page_id = parent_id;
-                         node = parent;
-                         path.pop_back();
                     }
+                    else
+                    {
+                         node->keys[node->key_count] = parent->keys[child_index];
+                         std::uint32_t offset = node->key_count + 1;
+
+                         for(std::uint32_t i = 0; i < right_sibling->key_count; ++i)
+                         {
+                              node->keys[offset + i] = right_sibling->keys[i];
+                         }
+                         for(std::uint32_t i = 0; i < right_sibling->key_count + 1; ++i)
+                         {
+                              node->children[offset + i] = right_sibling->children[i];
+                         }
+
+                         node->key_count += right_sibling->key_count + 1;
+                    }
+
+                    for(std::uint32_t i = child_index; i < parent->key_count - 1; ++i)
+                    {
+                         parent->keys[i] = parent->keys[i + 1];
+                         parent->children[i + 1] = parent->children[i + 2];
+                    }
+                    parent->key_count--;
+
+                    _bpm->unpin_page(current_page_id, true);
+                    _bpm->unpin_page(right_page_id, true);
+
+                    if(left_page_id != -1) _bpm->unpin_page(left_page_id, false);
+
+                    if(parent_page_id == _root_page_id && parent->key_count == 0)
+                    {
+                         _root_page_id = current_page_id;
+                         _bpm->unpin_page(parent_page_id, true);
+                         return true;
+                    }
+                    if(parent->key_count >= BTreeNode::MIN_KEYS)
+                    {
+                         _bpm->unpin_page(parent_page_id, true);
+                         return true;
+                    }
+                    
+                    current_page_id = parent_page_id;
+                    node = parent;
+                    path.pop_back();
+                    continue;
                }
+
+               //should not reach here
+               _bpm->unpin_page(parent_page_id, true);
+               break;
           }
 
           _bpm->unpin_page(current_page_id, true);
-          
           return true;
      }
 }
