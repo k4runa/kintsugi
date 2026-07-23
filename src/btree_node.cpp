@@ -375,7 +375,6 @@ namespace Kintsugi::Tree
                _bpm->unpin_page(current_page_id, true);
                return true;
           }
-
           while(!path.empty())
           {
                int parent_id = path.back().first;
@@ -391,7 +390,10 @@ namespace Kintsugi::Tree
                int right_page_id = (right_sibling_idx != -1 ) ? parent->children[right_sibling_idx] : -1;
 
                BufferPool::Frame* left_sibling_frame = left_page_id != -1 ? _bpm->fetch_page(left_page_id) : nullptr;
+               BufferPool::Frame* right_sibling_frame = right_page_id != -1 ? _bpm->fetch_page(right_page_id) : nullptr;
+
                BTreeNode* left_sibling = left_sibling_frame != nullptr ? reinterpret_cast<BTreeNode*>(left_sibling_frame->data) : nullptr;
+               BTreeNode* right_sibling = right_sibling_frame != nullptr ? reinterpret_cast<BTreeNode*>(right_sibling_frame->data) : nullptr;
 
                if(left_sibling != nullptr && left_sibling->key_count > BTreeNode::MIN_KEYS)
                {
@@ -401,7 +403,7 @@ namespace Kintsugi::Tree
                     for(std::uint32_t i = node->key_count; i > 0; --i)
                     {
                          node->keys[i] = node->keys[i - 1];
-                         node->children[i] = node->children[i - 1];
+                         node->values[i] = node->values[i - 1];
                     }
 
                     node->keys[0] = borrowed_key;
@@ -414,6 +416,7 @@ namespace Kintsugi::Tree
 
                     _bpm->unpin_page(current_page_id, true);
                     _bpm->unpin_page(left_page_id, true);
+                    if(right_page_id != -1) _bpm->unpin_page(right_page_id, false);
                     _bpm->unpin_page(parent_id, true);
 
                     return true;
@@ -421,12 +424,6 @@ namespace Kintsugi::Tree
                }
                else 
                {
-                    //first unpin the left, because we wont gonna use it.
-                    if(left_page_id != -1) _bpm->unpin_page(left_page_id, false);
-                    
-                    BufferPool::Frame* right_sibling_frame = right_page_id != -1 ? _bpm->fetch_page(right_page_id) : nullptr;
-                    BTreeNode* right_sibling = right_sibling_frame != nullptr ? reinterpret_cast<BTreeNode*>(right_sibling_frame->data) : nullptr;
-
                     if(right_sibling != nullptr && right_sibling->key_count > BTreeNode::MIN_KEYS)
                     {
                          int borrowed_key = right_sibling->keys[0];
@@ -448,21 +445,102 @@ namespace Kintsugi::Tree
 
                          _bpm->unpin_page(current_page_id, true);
                          _bpm->unpin_page(right_page_id, true);
+                         if(left_page_id != -1) _bpm->unpin_page(left_page_id, false);
                          _bpm->unpin_page(parent_id, true); 
 
                          return true;
                     }
                }
-               
-               if(right_page_id != -1) _bpm->unpin_page(right_page_id, false);
-               _bpm->unpin_page(current_page_id, true);
-               current_page_id = parent_id;
-               node = parent;
-               path.pop_back();
+
+               // borrow failed, try merge
+               if(left_page_id != -1 && left_sibling != nullptr) // try left first 
+               {
+                    for(std::uint32_t i = 0; i < node->key_count; ++i)
+                    {
+                         left_sibling->keys[left_sibling->key_count + i] = node->keys[i];
+                         left_sibling->values[left_sibling->key_count + i] = node->values[i];
+                    }
+
+                    left_sibling->key_count += node->key_count;
+                    left_sibling->next_leaf_page_id = node->next_leaf_page_id;
+
+                    for(std::uint32_t i = child_index - 1; i < parent->key_count - 1; ++i)
+                    {
+                         parent->keys[i] = parent->keys[i + 1];
+                         parent->children[i + 1] = parent->children[i + 2];
+                    }
+
+                    parent->key_count--;
+
+                    _bpm->unpin_page(current_page_id, true);
+                    _bpm->unpin_page(left_page_id, true);
+
+                    if(right_page_id != -1) _bpm->unpin_page(right_page_id, false);
+
+                    if(parent_id == _root_page_id && parent->key_count == 0)
+                    {
+                         _root_page_id = left_page_id;
+                         _bpm->unpin_page(parent_id, true);
+                         return true;
+                    }
+
+                    if(parent->key_count >= BTreeNode::MIN_KEYS)
+                    {
+                         _bpm->unpin_page(parent_id, true);
+                         return true;
+                    }
+
+                    current_page_id = parent_id;
+                    node = parent;
+                    path.pop_back();
+               }
+               else //if left fail, try with right
+               {
+                    if(right_page_id != -1 && right_sibling != nullptr)
+                    {
+                         for(std::uint32_t i = 0; i < right_sibling->key_count; ++i)
+                         {
+                              node->keys[node->key_count + i] = right_sibling->keys[i];
+                              node->values[node->key_count + i] = right_sibling->values[i];
+                         }
+
+                         node->key_count += right_sibling->key_count;
+                         node->next_leaf_page_id = right_sibling->next_leaf_page_id;
+
+                         for(std::uint32_t i = child_index; i < parent->key_count - 1; ++i)
+                         {
+                              parent->keys[i] = parent->keys[i + 1];
+                              parent->children[i + 1] = parent->children[i + 2]; 
+                         }
+
+                         parent->key_count--;
+
+                         _bpm->unpin_page(current_page_id, true);
+                         _bpm->unpin_page(right_page_id, true);
+                         if(left_page_id != -1) _bpm->unpin_page(left_page_id, false);
+
+                         if(parent_id == _root_page_id && parent->key_count == 0)
+                         {
+                              _root_page_id = right_page_id;
+                              _bpm->unpin_page(parent_id, true);
+                              return true;
+                         }
+
+                         if(parent->key_count >= BTreeNode::MIN_KEYS)
+                         {
+                              _bpm->unpin_page(parent_id, true);
+                              return true;
+                         }
+
+                         current_page_id = parent_id;
+                         node = parent;
+                         path.pop_back();
+                    }
+               }
           }
 
           _bpm->unpin_page(current_page_id, true);
           
-          return false; // ill add merge later
+          return true;
      }
 }
