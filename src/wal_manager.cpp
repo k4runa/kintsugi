@@ -38,7 +38,7 @@ namespace Kintsugi::WAL
      std::size_t WALManager::write_log(int page_id, const char* new_data)
      {
           WALRecord record;
-          record.pagae_id = page_id;
+          record.page_id = page_id;
           record.lsn = next_lsn++;
           record.type = WALType::UPDATE;
 
@@ -65,7 +65,7 @@ namespace Kintsugi::WAL
           
           while(log_io.read(reinterpret_cast<char*>(&record), sizeof(WALRecord)))
           {
-               disk_manager->write_page(record.pagae_id, record.new_data);
+               disk_manager->write_page(record.page_id, record.new_data);
           }
      }
 

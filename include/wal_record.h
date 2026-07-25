@@ -13,7 +13,7 @@ namespace Kintsugi::WAL
      struct WALRecord
      {
           std::size_t lsn;
-          std::size_t pagae_id;
+          std::size_t page_id;
 
           WALType type;
 
