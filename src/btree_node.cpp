@@ -629,4 +629,47 @@ namespace Kintsugi::Tree
           _bpm->unpin_page(current_page_id, true);
           return true;
      }
+
+     bool BTreeIndex::update(int key, int value)
+     {
+          int current_page_id = _root_page_id;
+          
+          BufferPool::Frame* frame = _bpm->fetch_page(current_page_id);
+          BTreeNode* node = reinterpret_cast<BTreeNode*>(frame->data);
+          
+          while(!node->is_leaf)
+          {
+               int child_index = node->key_count;
+
+               for(std::uint32_t i = 0; i < node->key_count; ++i)
+               {
+                    if(key < node->keys[i])
+                    {
+                         child_index = i;
+                         break;
+                    }
+               }
+
+               int next_page_id = node->children[child_index];
+               _bpm->unpin_page(current_page_id, false);
+
+               current_page_id = next_page_id;
+               frame = _bpm->fetch_page(current_page_id);
+               node = reinterpret_cast<BTreeNode*>(frame->data);
+          }
+
+          for(std::uint32_t i = 0; i < node->key_count; ++i)
+          {
+               if(node->keys[i] == key)
+               {
+                    node->values[i] = value;
+                    _bpm->unpin_page(current_page_id, true);
+                    return true;
+               }
+          }
+
+          //not found
+          _bpm->unpin_page(current_page_id, false);
+          return false;
+     }
 }

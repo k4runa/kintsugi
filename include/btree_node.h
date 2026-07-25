@@ -44,6 +44,7 @@ namespace Kintsugi::Tree
                bool insert(int key, int value);
                bool search(int key, int* out_value);
                bool delete_k(int key);
+               bool update(int key, int new_value);
 
                std::vector<std::pair<int, int>> range_query(std::uint32_t min, std::uint32_t max) const;
 
