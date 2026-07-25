@@ -6,6 +6,10 @@
 #include <fstream>
 #include <string>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 namespace Kintsugi::WAL 
 {
      enum class WALType {UPDATE, COMMIT, ABORT};
@@ -24,7 +28,7 @@ namespace Kintsugi::WAL
      {
           public:
                WALManager(const std::string& log_file);
-               ~WALManager() = default;
+               ~WALManager();
 
                std::size_t write_log(int page_id, const char* new_data);
 
@@ -32,7 +36,11 @@ namespace Kintsugi::WAL
                void clear();
 
           private:
+#ifdef _WIN32
+               HANDLE _hFile = INVALID_HANDLE_VALUE;
+#else
                std::fstream log_io;
+#endif // _WIN32
                std::string _file_name;
                std::size_t next_lsn = 0;
      };
