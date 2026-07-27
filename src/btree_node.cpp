@@ -177,6 +177,9 @@ namespace Kintsugi::Tree
 
      bool BTreeIndex::insert(int key, int value)
      {
+          int n;
+          if(search(key, &n)) return false;
+
           std::vector<int> path;
 
           int current_page_id = _root_page_id;
@@ -317,6 +320,9 @@ namespace Kintsugi::Tree
 
      bool BTreeIndex::delete_k(int key)
      {
+          int n;
+          if(!search(key, &n)) return false;
+
           std::vector<std::pair<int, int>> path;
 
           int current_page_id = _root_page_id;
@@ -632,6 +638,9 @@ namespace Kintsugi::Tree
 
      bool BTreeIndex::update(int key, int value)
      {
+          int n;
+          if(!search(key, &n)) return false;
+
           int current_page_id = _root_page_id;
           
           BufferPool::Frame* frame = _bpm->fetch_page(current_page_id);
