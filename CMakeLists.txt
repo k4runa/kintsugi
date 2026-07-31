@@ -10,6 +10,8 @@ add_executable(kintsugi
     src/buffer_pool.cpp
     src/disk_manager.cpp
     src/wal_manager.cpp
+    src/serializer.cpp
+    src/key_map.cpp
 
     src/main.cpp
 )
