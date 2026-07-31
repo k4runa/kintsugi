@@ -34,6 +34,14 @@ namespace Kintsugi::Storage
           }
      }
 
+     DiskManager::~DiskManager()
+     {
+          if(_db_io.is_open())
+          {
+               _db_io.close();
+          }
+     }
+
      void DiskManager::read_page(int page_id, char* page_data)
      {
           _db_io.seekg(static_cast<std::streamoff>(page_id) * PAGE_SIZE);

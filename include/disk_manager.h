@@ -13,8 +13,9 @@ namespace Kintsugi::Storage
      {
           public:
                static constexpr std::size_t PAGE_SIZE = 4096;
+               
                DiskManager(const std::string& db_file);
-               ~DiskManager() = default;
+               ~DiskManager();
 
                // functions
                void read_page(int page_id, char* page_data);
