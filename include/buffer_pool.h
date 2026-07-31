@@ -10,17 +10,13 @@
 
 namespace Kintsugi::BufferPool
 {
-     // Frame class
-     class Frame
+     // Frame struct
+     struct Frame
      {
-          public:
-               char data[Storage::DiskManager::PAGE_SIZE];
-               int page_id = -1; //empty
-               bool is_dirty = false;
-               int pin_count = 0;
-          
-          private:
-               //nothing for now.
+          char data[Storage::DiskManager::PAGE_SIZE];
+          int page_id = -1; //empty
+          bool is_dirty = false;
+          int pin_count = 0;
      };
 
      // BufferPoolManager class
