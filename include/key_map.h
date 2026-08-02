@@ -14,6 +14,9 @@ namespace Kintsugi
 
                int get_or_create(const std::string& key);
                int get(const std::string& key);
+               int count(const std::string& key);
+
+               std::unordered_map<std::string, int> get_map();
           
           private:
                int next_id;

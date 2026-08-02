@@ -67,4 +67,21 @@ namespace Kintsugi
 
           return -1;
      }
+
+     int Keymap::count(const std::string& key)
+     {
+          int count = 0;
+
+          for(auto& [k, v] : map)
+          {
+               if(k.starts_with(key)) count++;
+          }
+
+          return count;
+     }
+
+     std::unordered_map<std::string, int> Keymap::get_map()
+     {
+          return map;
+     }
 }
