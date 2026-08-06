@@ -4,8 +4,13 @@
 #include <string>
 #include <vector>
 
-namespace Kintsugi::Serializer 
+namespace Kintsugi::Serializer
 {
+     // The four-byte numbers are taken apart and put back together by hand instead of
+     // memcpy'ing an uint32_t. Slower, but the byte order is then written down in the
+     // code rather than inherited from whatever CPU built the file. Little endian:
+     // lowest byte first.
+
      std::vector<std::uint8_t> serialize(Entry &entry)
      {
           std::vector<std::uint8_t> buf;
@@ -18,6 +23,8 @@ namespace Kintsugi::Serializer
 
           for(auto& field : entry.fields)
           {
+               // Length first, then the raw bytes. No terminator and no escaping, so a
+               // value is free to contain quotes, spaces, newlines, whatever.
                std::uint32_t key_len = field.key.size();
 
                buf.push_back((key_len) & 0xFF);
@@ -55,23 +62,30 @@ namespace Kintsugi::Serializer
 
           offset += 4;
 
+          // Only the header above is bounds checked. Inside the loop we trust every
+          // length we read, so a corrupt page can walk us straight off the end of buf.
+          // Store hands us a whole page it read from disk, which is exactly the input
+          // that could be garbage, so this wants a length check per field before it
+          // ever sees a file somebody else wrote.
           for(std::uint32_t i = 0; i < field_count; ++i)
           {
                std::uint32_t key_len = (static_cast<std::uint32_t>(buf[offset + 0])) |
                (static_cast<std::uint32_t>(buf[offset + 1]) << 8) | (static_cast<std::uint32_t>(buf[offset + 2]) << 16) |
                (static_cast<std::uint32_t>(buf[offset + 3]) << 24);
-          
+
                offset += 4;
 
+               // Built from a pointer and a length, not from a C string, because the
+               // bytes are not null terminated and may contain a 0 of their own.
                std::string key(reinterpret_cast<const char*>(&buf[offset]), key_len);
                offset += key_len;
 
                std::uint32_t val_len = (static_cast<std::uint32_t>(buf[offset + 0])) |
                (static_cast<std::uint32_t>(buf[offset + 1]) << 8) | (static_cast<std::uint32_t>(buf[offset + 2]) << 16) |
                (static_cast<std::uint32_t>(buf[offset + 3]) << 24);
-                    
+
                offset += 4;
-               
+
                std::string value(reinterpret_cast<const char*>(&buf[offset]), val_len);
                offset += val_len;
 

@@ -8,17 +8,22 @@
 #include <stdexcept>
 
 
-namespace Kintsugi::BufferPool 
+namespace Kintsugi::BufferPool
 {
      BufferPoolManager::BufferPoolManager(const std::size_t pool_size, Storage::DiskManager* disk_manager, WAL::WALManager* wal_manager)
           : _disk_manager(disk_manager), _wal_manager(wal_manager) {
+               // Sized once here and never resized. That matters: the B-tree holds a
+               // Frame* while it works on a node, and a growing vector would move the
+               // frames out from under it.
                frames.resize(pool_size);
           }
 
      std::size_t BufferPoolManager::find_free_or_evictable_frame()
      {
+          // frames.size() doubles as "found nothing", since it can never be a real index.
           std::size_t target_idx = frames.size();
 
+          // An untouched slot is free money, no eviction and no write.
           for(std::uint32_t i = 0; i < frames.size(); ++i)
           {
                if(frames[i].page_id == -1)
@@ -30,6 +35,8 @@ namespace Kintsugi::BufferPool
 
           if(target_idx == frames.size())
           {
+               // Back of the list is the coldest page. Walking backwards means the
+               // first unpinned page we hit is the best victim available.
                for(auto it = lru_list.rbegin(); it != lru_list.rend(); ++it)
                {
                     int candidate_page_id = *it;
@@ -43,6 +50,9 @@ namespace Kintsugi::BufferPool
                }
           }
 
+          // Every single page is pinned. Not something a caller can recover from, it
+          // means somebody up the stack forgot to unpin, so fail loudly instead of
+          // handing back a frame that is still in use.
           if(target_idx == frames.size())
           {
                throw std::runtime_error("Buffer pool full, no evictable page.");
@@ -57,9 +67,12 @@ namespace Kintsugi::BufferPool
 
           std::size_t target_idx = find_free_or_evictable_frame();
           Frame& target_frame = frames[target_idx];
-          
+
           if(target_frame.page_id != -1)
           {
+               // Evicting somebody. Log before writing the page out, that is the whole
+               // deal with write-ahead logging: if we crash after the log write and
+               // before the disk write, recovery still has the page image.
                if(target_frame.is_dirty)
                {
                     _wal_manager->write_log(target_frame.page_id, target_frame.data);
@@ -76,11 +89,16 @@ namespace Kintsugi::BufferPool
                }
           }
 
+          // Zero it out, otherwise the caller inherits whatever the last page left
+          // behind. The B-tree counts on this, its constructor only sets three fields.
           std::memset(target_frame.data, 0, Storage::DiskManager::PAGE_SIZE);
           target_frame.page_id = page_id;
           target_frame.pin_count = 1;
+
+          // Dirty from the start. The page has no version on disk yet, so it must not
+          // be dropped silently even if the caller never writes to it.
           target_frame.is_dirty = true;
-          
+
           page_table[page_id] = target_idx;
           lru_list.push_front(page_id);
           lru_map[page_id] = lru_list.begin();
@@ -94,6 +112,8 @@ namespace Kintsugi::BufferPool
      {
           auto it = page_table.find(page_id);
 
+          // Already in memory: pin it, move it to the front and hand it over. No disk
+          // access at all, which is the entire point of the pool.
           if(it != page_table.end())
           {
                Frame& frame = frames[it->second];
@@ -101,13 +121,13 @@ namespace Kintsugi::BufferPool
 
                auto lru_it = lru_map.find(page_id);
 
-               if(lru_it != lru_map.end()) 
+               if(lru_it != lru_map.end())
                {
                     lru_list.erase(lru_it->second);
                     lru_list.push_front(page_id);
                     lru_it->second = lru_list.begin();
-               } 
-               else 
+               }
+               else
                {
                     lru_list.push_front(page_id);
                     lru_map[page_id] = lru_list.begin();
@@ -116,6 +136,7 @@ namespace Kintsugi::BufferPool
                return &frame;
           }
 
+          // Miss. Make room, same eviction and same log-then-write order as new_page.
           std::size_t target_idx = find_free_or_evictable_frame();
 
           Frame& target = frames[target_idx];
@@ -132,13 +153,14 @@ namespace Kintsugi::BufferPool
 
                auto lru_it = lru_map.find(target.page_id);
 
-               if(lru_it != lru_map.end()) 
+               if(lru_it != lru_map.end())
                {
                     lru_list.erase(lru_it->second);
                     lru_map.erase(lru_it);
                }
           }
 
+          // Clean on arrival: this is exactly what the disk holds.
           _disk_manager->read_page(page_id, target.data);
           target.page_id = page_id;
           target.pin_count = 1;
@@ -153,11 +175,16 @@ namespace Kintsugi::BufferPool
 
      void BufferPoolManager::unpin_page(int page_id, bool is_dirty)
      {
+          // Unpinning a page that was already evicted is not worth complaining about,
+          // it can happen on an error path where the caller lost track.
           auto it = page_table.find(page_id);
           if(it == page_table.end()) return;
 
           Frame& frame = frames[it->second];
           if(frame.pin_count > 0) frame.pin_count--;
+
+          // The flag only ever goes on, never off. One reader passing false must not
+          // wipe out the fact that another caller wrote to the page.
           if(is_dirty) frame.is_dirty = true;
      }
 
@@ -165,6 +192,7 @@ namespace Kintsugi::BufferPool
      {
           if(page_id < 0) return;
 
+          // Not resident means nothing to flush, whatever is on disk is current.
           auto it = page_table.find(page_id);
           if(it == page_table.end()) return;
 
@@ -173,12 +201,17 @@ namespace Kintsugi::BufferPool
           {
                _wal_manager->write_log(page_id, frame.data);
                _disk_manager->write_page(page_id, frame.data);
+
+               // Clean again, but still resident and still pinned if it was pinned.
+               // Flushing is not eviction.
                frame.is_dirty = false;
           }
      }
 
      void BufferPoolManager::flush_all_pages()
      {
+          // Pins are ignored here. A pinned page can be mid-edit, so this is only safe
+          // at a point where nothing is holding a page, shutdown being the obvious one.
           for(auto& frame : frames)
           {
                if(frame.is_dirty)
