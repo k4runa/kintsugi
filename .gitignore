@@ -1,3 +1,7 @@
 build
 tests
 .claude
+*.db
+*.wal
+*.kintsugi
+test_*
