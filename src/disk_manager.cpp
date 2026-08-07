@@ -7,7 +7,7 @@
 
 namespace Kintsugi::Storage
 {
-     DiskManager::DiskManager(const std::string& db_file) : _file_name(db_file)
+     DiskManager::DiskManager(const std::string& db_file, const bool _show_logs = false) : _file_name(db_file), show_logs(_show_logs)
      {
           // open the file, if fail or not exists, create a new one.
           // Has to be binary, otherwise Windows would happily turn a 0x0A inside a
@@ -19,8 +19,12 @@ namespace Kintsugi::Storage
           {
                // in|out will not create a missing file, so open it once with out only
                // to bring it into existence, then reopen it the way we actually want.
-               std::cerr << "INFO: couldn't found -> " << _file_name
-                    << "\nINFO: Creating new database file..." << std::endl;
+              
+               if(show_logs)
+               {
+                    std::cerr << "INFO: couldn't found -> " << _file_name
+                         << "\nINFO: Creating new database file..." << std::endl;
+               }
 
                _db_io.clear();
                _db_io.open(_file_name, std::ios::out); // just create the file
@@ -33,8 +37,11 @@ namespace Kintsugi::Storage
                {
                     throw std::runtime_error("Could not create / open file: " + _file_name);
                }
-
-               std::cout << "INFO: Database created successfully: " << _file_name << std::endl;
+               
+               if(show_logs)
+               {
+                    std::cout << "INFO: Database created successfully: " << _file_name << std::endl;
+               }
           }
      }
 

@@ -19,7 +19,7 @@ namespace Kintsugi::Storage
           public:
                static constexpr std::size_t PAGE_SIZE = 4096;
 
-               DiskManager(const std::string& db_file);
+               DiskManager(const std::string& db_file, const bool _show_logs);
                ~DiskManager();
 
                // functions
@@ -34,6 +34,8 @@ namespace Kintsugi::Storage
           private:
                std::fstream _db_io;
                std::string _file_name;
+
+               bool show_logs;
 
                // Not stored anywhere, only lives as long as the process does.
                int _next_page_id {};

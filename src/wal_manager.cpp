@@ -10,7 +10,7 @@
 
 namespace Kintsugi::WAL
 {
-     WALManager::WALManager(const std::string& log_file) : _file_name(log_file)
+     WALManager::WALManager(const std::string& log_file, const bool _show_logs = false) : _file_name(log_file), show_logs(_show_logs)
      {
           // open the file, if fail or not exists, create a new one.
           // Same two-step dance as DiskManager: in|out refuses to create the file.
@@ -19,7 +19,11 @@ namespace Kintsugi::WAL
           //check if file couldn't open, or not exists
           if(!log_io.is_open())
           {
-               std::cerr << "INFO: No log file found. \nINFO: Creating a new log file..." << std::endl;
+               if(show_logs)
+               {
+                    std::cerr << "INFO: No log file found. \nINFO: Creating a new log file..." << std::endl;
+               }
+
                log_io.clear();
                log_io.open(log_file, std::ios::out);
                log_io.close();
@@ -32,7 +36,11 @@ namespace Kintsugi::WAL
                     throw std::runtime_error("Could not open / create file: " + log_file);
                }
 
-               std::cout << "INFO: Log file created successfully: " << log_file << std::endl;
+               if(show_logs)
+               {
+                    std::cout << "INFO: Log file created successfully: " << log_file << std::endl;
+               }
+
           }
      }
 

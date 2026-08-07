@@ -37,7 +37,7 @@ namespace Kintsugi::WAL
      class WALManager
      {
           public:
-               WALManager(const std::string& log_file);
+               WALManager(const std::string& log_file, const bool _show_logs);
                ~WALManager() = default;
 
                // Appends one record and returns its lsn.
@@ -51,6 +51,7 @@ namespace Kintsugi::WAL
                void clear();
 
           private:
+               bool show_logs;
                std::fstream log_io;
                std::string _file_name;
                std::size_t next_lsn = 0;
