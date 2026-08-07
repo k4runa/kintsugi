@@ -18,6 +18,7 @@ add_executable(kintsugi
     src/serializer.cpp
     src/key_map.cpp
     src/store.cpp
+    src/auth.cpp
 
     src/main.cpp
 )
