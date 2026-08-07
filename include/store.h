@@ -36,6 +36,10 @@ namespace Kintsugi
                // Sorted by index. Empty when the platform has nothing stored.
                std::vector<Serializer::Entry> list_platform(const std::string& platform);
 
+               // Every platform that has at least one entry, each named once, sorted
+               // by name. Empty when nothing is stored at all.
+               std::vector<std::string> list_platforms();
+
           private:
                Tree::BTreeIndex* tree;
                BufferPool::BufferPoolManager* bpm;

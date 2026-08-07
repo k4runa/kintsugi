@@ -5,12 +5,14 @@
 #include "../include/store.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <stdexcept>
 #include <string>
 #include <strings.h>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace Kintsugi
@@ -127,6 +129,37 @@ namespace Kintsugi
                vec.push_back(get_entry(platform, idx));
           }
 
+          return vec;
+     }
+
+     std::vector<std::string> Store::list_platforms()
+     {
+          // There is one key per entry, so a platform holding five entries turns up
+          // five times in the map. The set is what collapses those down to a name,
+          // the vector is only here because that is what the caller wants back.
+          std::unordered_map<std::string, int> map = key_map->get_map();
+          std::unordered_set<std::string> tmp;
+          std::vector<std::string> vec;
+
+          for(auto& [k, v] : map)
+          {
+               // A key with no ':' has no index part to cut off, and find() coming back
+               // as npos makes substr take the whole string. list_platform() drops those
+               // instead. add_entry() never writes one, only a direct keymap call can.
+               std::string platform = k.substr(0, k.find(':'));
+               tmp.insert(platform);
+          }
+
+          for(auto& v : tmp)
+          {
+               vec.push_back(v);
+          }
+
+          // Both containers above are unordered, so without this the names come out in
+          // hash order: not the order they were added, not alphabetical, and liable to
+          // rearrange themselves as soon as a new platform changes the bucket count.
+          // Sorting names is cheap, there are as many of them as the user has platforms.
+          std::sort(vec.begin(), vec.end());
           return vec;
      }
 }
